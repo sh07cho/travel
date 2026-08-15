@@ -1,0 +1,42 @@
+name: Deploy GitHub Pages
+
+# 빅아일랜드 여행 지도 — 사슴앱 레포(sh07cho/claude)를 비공개로 전환하기 위해 분리했다.
+#  ★분리 이유(2026-08-15): GitHub Pages 는 **Free 플랜에서 비공개 레포를 지원하지 않는다.**
+#   지도를 그대로 두면 비공개 전환 순간 사이트가 내려간다. 지도만 공개 레포로 뺀다.
+#  ⚠️ `index.html` 과 `hawaii.html` 은 같은 파일이다 — 종전 주소(/claude/hawaii.html)로
+#   들어오던 링크를 살리려고 두 이름을 다 둔다.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Build site
+        run: |
+          mkdir -p _site
+          cp index.html _site/index.html
+          cp hawaii.html _site/hawaii.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

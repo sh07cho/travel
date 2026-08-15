@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#000000">
+<title>빅아일랜드 여행 지도</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --lava:#000000;
+    --sand:#faf6ef;
+    --ocean:#0e7490;
+    --sunset:#ea580c;
+    --palm:#166534;
+    --ink:#292524;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;background:#000}
+  #app{display:flex;flex-direction:column;height:100%;height:100dvh}
+
+  header{background:var(--lava);color:var(--sand);padding:calc(env(safe-area-inset-top) + 10px) 16px 0}
+  .title-row{display:flex;align-items:baseline;gap:8px;padding-bottom:8px}
+  h1{font-size:17px;font-weight:700;letter-spacing:-.3px}
+  .sub{font-size:12px;opacity:.55}
+  .hbtn{align-self:center;background:rgba(255,255,255,.12);color:#fff;border:none;border-radius:50%;
+        width:32px;height:32px;font-size:15px;line-height:1;cursor:pointer;font-family:inherit}
+  .hbtn:active{background:rgba(255,255,255,.28)}
+  #theme{margin-left:auto}
+  #refresh{margin-left:8px}
+
+  nav{display:flex;gap:6px;overflow-x:auto;padding:0 12px 10px;background:var(--lava);scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;border:none;border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600;
+       background:rgba(255,255,255,.09);color:rgba(255,255,255,.75);cursor:pointer;line-height:1.2;font-family:inherit}
+  .tab small{display:block;font-size:10px;font-weight:400;opacity:.7}
+  .tab.on{background:var(--day,var(--sand));color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+
+  #map{flex:1;min-height:0;z-index:0}
+  .leaflet-container{font-family:inherit}
+
+  /* numbered pin */
+  .pin{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50% 50% 50% 4px;
+       transform:rotate(-45deg);border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+  .pin span{transform:rotate(45deg);color:#fff;font-size:13px;font-weight:800}
+
+  /* always-visible base pins (숙소/코스트코) */
+  .base-pin{background:#111;color:#fff;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800;
+            border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);white-space:nowrap;width:max-content;
+            transform:translate(-50%,-50%);line-height:1.3}
+
+  .popup-time{font-size:11px;font-weight:700;color:var(--sunset);letter-spacing:.5px}
+  .popup-name{font-size:14px;font-weight:700;margin:2px 0 4px;color:var(--ink)}
+  .popup-note{font-size:12px;color:#57534e;line-height:1.45}
+  .popup-go, .leaflet-container a.popup-go{display:inline-block;margin-top:8px;margin-right:6px;padding:7px 12px;
+            border-radius:8px;background:var(--ocean);color:#fff;font-size:12.5px;font-weight:700;text-decoration:none}
+  .leaflet-container a.popup-info{background:#efe9dd;color:var(--ink);margin-right:0}
+
+  /* bottom stop list */
+  #sheet{position:relative;z-index:2;background:var(--sand);margin-top:-14px;border-radius:16px 16px 0 0;
+         box-shadow:0 -6px 24px rgba(0,0,0,.18);display:flex;flex-direction:column;overflow:hidden;height:46dvh}
+  #grab{flex:0 0 auto;height:22px;display:flex;align-items:center;justify-content:center;touch-action:none;cursor:grab}
+  #grab::before{content:'';width:38px;height:5px;border-radius:999px;background:#d6cdb8}
+  #scroll{flex:1;min-height:0;position:relative;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  #sheetbody{position:relative;background:var(--sand);min-height:100%;
+             padding:6px 0 calc(env(safe-area-inset-bottom) + 6px)}
+  .stop{display:flex;gap:12px;align-items:flex-start;padding:10px 16px;cursor:pointer;position:relative}
+  .stop:active{background:#f1ebdf}
+  .stop.home-row{background:#f4efe4}
+  .stop::before,.leg::before{content:'';position:absolute;left:27px;top:0;bottom:0;width:2px;background:#e6ded0;z-index:0}
+  .stop:first-child::before{top:23px}
+  .stop:last-child::before{height:23px;bottom:auto}
+  .stop-num{flex:0 0 24px;height:24px;border-radius:50%;color:#fff;font-size:12px;font-weight:800;
+            display:flex;align-items:center;justify-content:center;margin-top:1px;position:relative;z-index:1;box-shadow:0 0 0 3px var(--sand)}
+  .stop-body{min-width:0}
+  .stop-time{font-size:11px;font-weight:700;color:var(--sunset)}
+  .stay{color:#a8a29e;font-weight:600;font-size:.92em}
+  .stop-name{font-size:14px;font-weight:600;color:var(--ink);margin:1px 0}
+  .stop-note{font-size:11.5px;color:#78716c;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .leg{position:relative;padding:4px 0 4px 52px;font-size:11px;font-weight:700;color:#a8a29e}
+  .leg.home-leg{color:var(--ink);font-weight:800}
+
+  /* map controls & route */
+  .route-btn{background:var(--sand);color:var(--ink);border:none;border-radius:10px;padding:8px 12px;
+             font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+  .route-btn.off{background:rgba(28,25,23,.82);color:rgba(255,255,255,.85)}
+  .loc-btn{background:var(--sand);color:var(--ink);border:none;border-radius:10px;width:38px;height:38px;
+           font-size:17px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
+  .loc-btn.busy{opacity:.55}
+  .me-dot{width:16px;height:16px;border-radius:50%;background:#3b82f6;border:2.5px solid #fff;
+          box-shadow:0 0 0 rgba(59,130,246,.5);animation:mepulse 2s infinite}
+  @keyframes mepulse{0%{box-shadow:0 0 0 0 rgba(59,130,246,.5)}70%{box-shadow:0 0 0 13px rgba(59,130,246,0)}100%{box-shadow:0 0 0 0 rgba(59,130,246,0)}}
+  .leg-badge{background:#fff;border:1.5px solid rgba(0,0,0,.15);border-radius:999px;padding:1px 7px;font-size:11px;
+             font-weight:800;color:var(--ink);white-space:nowrap;width:max-content;transform:translate(-50%,-50%);
+             box-shadow:0 1px 4px rgba(0,0,0,.3)}
+
+  /* 다크모드 — 우상단 토글(초기값: 저장값 or 기기설정) */
+  [data-theme="dark"] #sheet, [data-theme="dark"] #sheetbody{background:#1b1714}
+  [data-theme="dark"] #grab::before{background:#3a352d}
+  [data-theme="dark"] .stop.home-row{background:#241f19}
+  [data-theme="dark"] .stop:active{background:#26221c}
+  [data-theme="dark"] .stop::before,[data-theme="dark"] .leg::before{background:#37322a}
+  [data-theme="dark"] .stop-num{box-shadow:0 0 0 3px #1b1714}
+  [data-theme="dark"] .stop-name{color:#f2ece0}
+  [data-theme="dark"] .stop-note{color:#a8a29e}
+  [data-theme="dark"] .leg{color:#8a847a}
+  [data-theme="dark"] .route-btn{background:#2a2520;color:#f2ece0}
+  [data-theme="dark"] .loc-btn{background:#2a2520;color:#f2ece0}
+  [data-theme="dark"] .leaflet-popup-content-wrapper,[data-theme="dark"] .leaflet-popup-tip{background:#221e19;color:#f2ece0}
+  [data-theme="dark"] .popup-name{color:#f2ece0}
+  [data-theme="dark"] .popup-note{color:#b8b2a8}
+  [data-theme="dark"] .leaflet-container a.popup-info{background:#332d26;color:#f2ece0}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title-row"><h1>🌺 빅아일랜드</h1><span class="sub">7/10 – 7/18 · 조가네</span><button id="theme" class="hbtn" aria-label="다크모드 전환">🌙</button><button id="refresh" class="hbtn" aria-label="새로고침" onclick="location.reload()">↻</button></div>
+    <nav id="tabs"></nav>
+  </header>
+  <div id="map"></div>
+  <div id="sheet"><div id="grab"></div><div id="scroll"><div id="sheetbody"></div></div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const DAY_COLORS = ["#d97706","#9d174d","#c2410c","#6d28d9","#a21caf","#78350f","#ea580c","#0f766e","#1d4ed8"];
+
+const DAYS = [
+ {d:1, label:"7/10", dow:"금", name:"도착일", stops:[
+   {t:"7:30 PM", n:"Costco Kailua-Kona", m:"저녁+며칠치 장보기, 주유. 8:30PM 마감. Visa/현금만!", lat:19.6849498, lng:-156.0164298},
+ ]},
+ {d:2, label:"7/11", dow:"토", name:"마우나케아 🔭",
+   depart:"12:15 PM", prep:"느긋한 오전 후 출발. 🧥밤에 정상(4,200m) 영하권 대비 필수 — 두꺼운 패딩·장갑·비니, 담요, 물 넉넉히, 간식, 선글라스, 별관측용 손전등/헤드램프, 고산 멀미약, 카메라. 연료는 KTA 전 코스트코서 가득", stops:[
+   {t:"12:30 PM", n:"Umekes Fish Market (점심)", m:"느긋한 오전 후 점심. 포케나초스 강추. 토 11AM–9PM", lat:19.6440382, lng:-155.9990828},
+   {t:"1:45 PM", n:"Costco 주유", m:"오늘 마우나케아(4,200m) 올라가는 날 — 연료 가득 필수! 코스트코 개스 최저가. Visa/현금만", lat:19.6849498, lng:-156.0164298},
+   {t:"2:45 PM", n:"KTA Waimea (간식·물 보급)", m:"산 오르기 전 마지막 상점! 여기 지나면 매장 없음. 물(고산 필수)·초콜릿·견과·과일·빵 15분 쇼핑. 방문자센터 매점은 컵라면·코코아뿐", lat:20.0213, lng:-155.673},
+   {t:"3:45 PM", n:"Maunakea 방문자센터 (2,800m)", m:"고도적응 최소 1.5~2시간 — 절대 서두르지 말 것(고산병 예방). 5:45쯤 정상 출발. 따뜻한 옷 갈아입고 물·간식, 화장실도 여기서", lat:19.7592729, lng:-155.4561238},
+   {t:"6:20 PM", n:"Mauna Kea 정상 (4,200m)", m:"VIS→정상 급경사 비포장 30~40분(4WD·저단기어·천천히). 일몰 7:05 — 여유롭게 자리잡고 감상. 하산 4단 기어·연료 반통 이상", lat:19.8230355, lng:-155.4694483},
+   {t:"7:50 PM", n:"방문자센터 별 관측", m:"하산 후 VIS 주변서 은하수·별. 정상보다 따뜻하고 안전. 실컷 보고 천천히 코나로(약 1시간)", lat:19.7592729, lng:-155.4561238},
+ ]},
+ {d:3, label:"7/12", dow:"일", name:"해변 릴랙스 🏖️",
+   depart:"11:00 AM", prep:"😴 오늘은 늦잠 OK. 🥪 집에서 샌드위치 미리 만들기(하푸나 점심용)! 🏖️ 수영복 입고, 비치타월·돗자리·파라솔·선크림·물·아쿠아슈즈·물안경·방수백, 하푸나 주차비 현금($15)", stops:[
+   {t:"11:15 AM", n:"Kona Wave Cafe (아사이볼)", m:"늦은 아침, 상큼하게 — 코나볼/몽키볼 추천. 7AM 오픈. 코나 시내 Alii Dr", dest:"Kona Wave Cafe, 75-5669 Alii Dr, Kailua-Kona, HI 96740", lat:19.6404762, lng:-155.9964447},
+   {t:"12:45 PM", n:"Hapuna Beach (샌드위치 점심)", m:"코나서 북쪽 약 45분. 길고 완만한 백사장·수영 최적·나무그늘. 집에서 싸온 샌드위치로 비치 피크닉! 주차 $15·샤워장", lat:19.9922847, lng:-155.8256923},
+   {t:"4:00 PM", n:"숙소 (휴식)", m:"하푸나서 코나 복귀(약 40분). 샤워·한숨 돌리고 선셋디너 채비", dest:"75-6026 Alii Dr, Kailua-Kona, HI 96740", lat:19.6235, lng:-155.9860},
+   {t:"5:30 PM", n:"On the Rocks (선셋디너)", m:"숙소서 2분. 모래바닥+일몰+라이브. 예약 안받음 — 5시반 전 도착", lat:19.6334483, lng:-155.9899175},
+ ]},
+ {d:4, label:"7/13", dow:"월", name:"화산 새벽투어 🌋",
+   depart:"3:00 AM", prep:"🌋 전날 밤 주유·짐 준비 끝내고 3시 정각 출발. 방한복(새벽 1,200m 쌀쌀)·담요, 헤드램프/손전등, 물·간식(공원 24시간이라 매점 없음), 카메라(야간 용암빛), recreation.gov 입장권 미리 결제", stops:[
+   {t:"5:10 AM", n:"Kilauea 전망대 — 용암빛 🌋", m:"⏰ 3:00AM 코나 출발 — 구글 기준 실주행 2시간10분(Hwy11 남부 95mi, 새벽엔 정체 없음). 5:10 도착. 전날 밤 주유·간식·옷 준비! 어둠 속 용암빛→여명→일출(5:50)까지 최고의 40분. 해발 1,200m 새벽 10~15°C — 긴옷·담요 필수. USGS 예보: 용암분수 에피소드51이 7/11~13 시작 가능 — 운 좋으면 분수쇼까지! 전날 밤 NPS 웹캠으로 glow 확인 후 출발. 입장 $30/차·7일유효 — 무인시간이라 recreation.gov 사전결제 추천", fromHome:130, lat:19.4203, lng:-155.2881},
+   {t:"6:30 AM", n:"Sulphur Banks + Steam Vents", m:"김 뿜는 지열지대 가벼운 산책 30~40분", lat:19.426, lng:-155.2634},
+   {t:"8:00 AM", n:"Nāhuku 용암동굴 + Kilauea Iki", m:"동굴 조명 8AM 점등 — 시간 딱 맞춰. 열대우림 속 용암터널+분화구 전망", lat:19.4137, lng:-155.2387},
+   {t:"8:45 AM", n:"Chain of Craters Rd → Hōlei Sea Arch", m:"바다까지 드라이브 왕복 ~2시간. 용암벌판·해안절벽·바다아치. 전망대 몇 곳만 골라 정차", lat:19.2932, lng:-155.0975},
+   {t:"11:30 AM", n:"Punalu'u 블랙샌드비치", m:"검은모래+바다거북 🐢 1시간. 공원에서 30분", lat:19.1357578, lng:-155.5047867},
+   {t:"12:45 PM", n:"Punalu'u Bake Shop (점심)", m:"비치에서 10분. 말라사다+샌드위치. 미국 최남단 베이커리. 1:30 출발→3:30 코나 도착, 오후는 휴식(새벽기상 보충)", lat:19.0612549, lng:-155.5859636},
+ ]},
+ {d:5, label:"7/14", dow:"화", name:"코나 릴랙스 + 디너 🍽️",
+   depart:"8:30 AM", prep:"☕ 오전 커피농장·오후 해변. 수영복·비치타월·선크림·모자, 현금(포케), 원두·포케용 보냉백. 저녁 Merriman's(스마트캐주얼) — 해변 후 숙소서 샤워·환복", stops:[
+   {t:"9:00 AM", n:"Heavenly Hawaiian 커피농장 (커피만)", m:"투어 없이 Konalani 커피바 — 워크인 OK. 푸어오버·콜드브루·100% 코나커피, 선물용 원두. 화 8:30AM–4:30PM. Holualoa Bishop Rd 산 위(1,500ft)", dest:"Heavenly Hawaiian Farms, 78-1136 Bishop Rd, Holualoa, HI 96725", lat:19.6146, lng:-155.9403},
+   {t:"11:30 AM", n:"Da Poke Shack (점심)", m:"평일만 영업(10AM–4PM)! 빅아일랜드 최고 포케", lat:19.6079178, lng:-155.9771731},
+   {t:"1:00 PM", n:"Magic Sands Beach", m:"오후 해변. 보디서핑. 파도 주의. 샤워장 있음", lat:19.5943328, lng:-155.9718466},
+   {t:"4:00 PM", n:"숙소 (샤워·환복)", m:"해변 후 복귀. 샤워하고 Merriman's용 스마트캐주얼로 환복. 와이메아까지 약 1시간이라 5:45쯤 출발 추천", dest:"75-6026 Alii Dr, Kailua-Kona, HI 96740", lat:19.6235, lng:-155.9860},
+   {t:"7:00 PM", n:"Merriman's Waimea (디너 예약)", m:"6:45쯤 와이메아 도착 여유. 7PM 예약 완료 — 취소는 당일 14시 이전 opentable.com. Farm-to-table 파인다이닝", lat:20.0230144, lng:-155.6765983},
+ ]},
+ {d:6, label:"7/15", dow:"수", name:"골프 ⛳",
+   depart:"6:45 AM", prep:"⛳ 골프복·골프화·장갑·모자·선글라스·선크림, 물, 티타임 예약 확인. 렌탈 클럽이면 예약 확인", stops:[
+   {t:"7:00 AM", n:"Clover and Mug (가벼운 아침)", m:"Keauhou 쇼핑센터 — 골프장 바로 옆(2분), 가는 길에 딱. 아침 샌드위치·커피 등 속 편하게 가볍게. 이른 아침 영업(오픈시간 확인). ※맥도날드는 코나 시내(북쪽 6마일)라 역방향 — 이게 동선상 최적", dest:"Clover and Mug, Keauhou Shopping Center, 78-6831 Alii Dr, Kailua-Kona, HI 96740", lat:19.5622, lng:-155.9608},
+   {t:"8:00 AM", n:"골프 라운드 (Kona Country Club)", m:"Keauhou — 코나 남쪽 6마일. 티업 8~9시. 티타임 예약 확인", dest:"Kona Country Club, 78-7000 Alii Dr, Kailua-Kona, HI 96740", lat:19.5662, lng:-155.9615},
+   {t:"5:00 PM", n:"Kona Brewing Co.", m:"골프 후 맥주+피자", lat:19.6430824, lng:-155.9975195},
+ ]},
+ {d:7, label:"7/16", dow:"목", name:"남코나 드라이브 🚙",
+   depart:"10:00 AM", prep:"😎 느긋한 남코나 스캐닉 드라이브 — 선글라스·모자·선크림·물, 카메라(켈라케쿠아 만·돌고래). 오후는 자유(휴식/수영)", stops:[
+   {t:"10:15 AM", n:"Acai Hawaii Company (아사이볼)", m:"※바식 아사이 자리 후신. 유기농 아사이볼+콜드브루. 8AM 오픈(2PM 마감). 코나 시내 Kahakai Rd", dest:"Acai Hawaii Company, 75-5831 Kahakai Rd, Kailua-Kona, HI 96740", lat:19.6392, lng:-155.9957},
+   {t:"12:00 PM", n:"The Coffee Shack (점심)", m:"Captain Cook 파노라마 오션뷰 카페 — 브런치·샌드위치·코나커피. 코나서 남쪽 약 40분 스캐닉 드라이브", dest:"The Coffee Shack, Captain Cook, HI 96704", lat:19.4979, lng:-155.9134},
+   {t:"1:15 PM", n:"Kealakekua Bay 전망 (돌고래)", m:"Coffee Shack서 3분. 빅아일랜드 최고 미항 — 스피너 돌고래 자주 보이고 Captain Cook 기념비 전망. 전망·산책만(스노클 X). 조용한 Manini Beach 쪽 추천", dest:"Kealakekua Bay State Historical Park, Captain Cook, HI 96704", lat:19.4757, lng:-155.9227},
+ ]},
+ {d:8, label:"7/17", dow:"금", name:"쇼핑",
+   depart:"9:45 AM", prep:"🛍️ 에코백/쇼핑백, 현금·카드, 기념품 리스트, 코나커피·마카다미아 담을 보냉백, 캐리어 여유공간 확인", stops:[
+   {t:"10:00 AM", n:"TASTY KONA", m:"하와이 로컬 메이드 기념품. 알리이 드라이브 산책 겸", lat:19.6388201, lng:-155.9934337},
+   {t:"11:30 AM", n:"Broke Da Mouth Grindz (점심)", m:"갈릭 후리카케 치킨! 11시 오픈 직후 도착 추천. 포장 추천", lat:19.6486065, lng:-156.000385},
+   {t:"1:00 PM", n:"Costco (기념품 대량구매)", m:"코나커피/마카다미아 최저가. 연료 만탱!", lat:19.6849498, lng:-156.0164298},
+ ]},
+ {d:9, label:"7/18", dow:"토", name:"귀국 ✈️",
+   depart:"6:05 AM", prep:"✈️ 짐 전날 다 싸기. 여권·항공권 확인, 렌터카 연료 100%(전날 채우기), 차 안 개인물품 확인, 기념품 캐리어 수납. 6:05 출발이면 Hertz 반납 여유", stops:[
+   {t:"6:30 AM", n:"Hertz 반납 → 공항", m:"7AM 반납. 연료 100% 필수(미달 시 갤런당 $8.29). 셔틀로 터미널", lat:19.7344834, lng:-156.0363095},
+ ]},
+];
+
+const map = L.map('map',{zoomControl:false});
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+  attribution:'© Esri', maxZoom:18
+}).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',{
+  maxZoom:18
+}).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{
+  maxZoom:18
+}).addTo(map);
+
+// 숙소 — 매일 0번 지점으로 표시(render에서). 별도 상수
+const HOME = {n:"숙소 · Kona Makai Condominiums", addr:"75-6026 Ali'i Dr, Kailua-Kona",
+  lat:19.6235, lng:-155.9860, dest:"75-6026 Alii Dr, Kailua-Kona, HI 96740"};
+// 코스트코 — 날짜와 상관없이 항상 표시
+const BASES = [
+ {label:"🛒 코스트코", n:"코스트코 (공항 근처)", addr:"73-5600 Maiau St, Kailua-Kona", lat:19.6849498, lng:-156.0164298,
+  dest:"Costco, 73-5600 Maiau St, Kailua-Kona, HI 96740", q:"Costco Kailua-Kona"},
+];
+BASES.forEach(b=>{
+  const mk = L.marker([b.lat,b.lng],{
+    icon:L.divIcon({className:'', iconSize:[0,0], html:`<div class="base-pin">${b.label}</div>`}),
+    zIndexOffset:1000
+  }).addTo(map);
+  mk.bindPopup(`<div class="popup-name">${b.n}</div><div class="popup-note">${b.addr}</div>
+    <a class="popup-go" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(b.dest)}" target="_blank">🚗 길찾기</a><a class="popup-go popup-info" href="https://www.google.com/maps/search/${encodeURIComponent(b.q)}/@${b.lat},${b.lng},16z" target="_blank">ℹ️ 구글 정보보기</a>`);
+});
+
+let markers = [];
+let routeLayer = L.layerGroup().addTo(map);
+let routeOn = false;
+let renderGen = 0;        // 렌더 세대 — 탭 전환 시 지난 비동기 요청 무시용
+const legCache = {};       // OSRM 응답 캐시 (같은 구간 재요청 방지)
+let cur = defaultDay();
+
+// 좌측 상단 경로 on/off 버튼
+const RouteControl = L.Control.extend({
+  options:{position:'topleft'},
+  onAdd(){
+    const b = L.DomUtil.create('button','route-btn');
+    const sync = ()=>{ b.textContent = routeOn?'🧭 경로 ON':'🧭 경로 OFF'; b.classList.toggle('off',!routeOn); };
+    sync();
+    L.DomEvent.on(b,'click',L.DomEvent.stop).on(b,'click',()=>{ routeOn=!routeOn; sync(); render(cur,true); });
+    return b;
+  }
+});
+map.addControl(new RouteControl());
+
+// 내 위치
+let meMarker=null, meCircle=null, locBtn=null;
+function showMe(lat,lng,acc){
+  if(meMarker) meMarker.setLatLng([lat,lng]);
+  else meMarker=L.marker([lat,lng],{interactive:false,zIndexOffset:2000,
+    icon:L.divIcon({className:'',iconSize:[18,18],iconAnchor:[9,9],html:'<div class="me-dot"></div>'})}).addTo(map);
+  if(meCircle) meCircle.setLatLng([lat,lng]).setRadius(acc);
+  else meCircle=L.circle([lat,lng],{radius:acc,color:'#1d4ed8',weight:1,opacity:.4,
+    fillColor:'#3b82f6',fillOpacity:.12,interactive:false}).addTo(map);
+}
+function locate(fly,manual){
+  if(!navigator.geolocation){ if(manual) alert('이 브라우저는 위치를 지원하지 않아요.'); return; }
+  if(locBtn) locBtn.classList.add('busy');
+  navigator.geolocation.getCurrentPosition(
+    p=>{ locBtn&&locBtn.classList.remove('busy');
+      const c=p.coords; showMe(c.latitude,c.longitude,c.accuracy);
+      if(fly) map.setView([c.latitude,c.longitude], Math.max(map.getZoom(),14),{animate:true}); },
+    e=>{ locBtn&&locBtn.classList.remove('busy');
+      if(manual) alert('위치를 가져올 수 없어요. 브라우저 위치 권한을 확인해 주세요.'); },
+    {enableHighAccuracy:true, timeout:10000, maximumAge:5000}
+  );
+}
+const LocateControl = L.Control.extend({
+  options:{position:'topleft'},
+  onAdd(){
+    const b=L.DomUtil.create('button','loc-btn');
+    b.textContent='📍'; b.title='내 위치';
+    locBtn=b;
+    L.DomEvent.on(b,'click',L.DomEvent.stop).on(b,'click',()=>locate(true,true));
+    return b;
+  }
+});
+map.addControl(new LocateControl());
+
+function defaultDay(){
+  const today = new Date();
+  const trip = new Date(2026,6,10); // Jul 10 2026
+  const diff = Math.floor((today - trip)/86400000);
+  return Math.min(Math.max(diff,0),8);
+}
+
+function pinIcon(color,num){
+  return L.divIcon({
+    className:'', iconSize:[30,30], iconAnchor:[15,28], popupAnchor:[0,-26],
+    html:`<div class="pin" style="background:${color}"><span>${num}</span></div>`
+  });
+}
+
+function legInfo(a,b){
+  const R=6371, rad=x=>x*Math.PI/180;
+  const dLat=rad(b.lat-a.lat), dLng=rad(b.lng-a.lng);
+  const h=Math.sin(dLat/2)**2 + Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+  const straight=2*R*Math.asin(Math.sqrt(h));    // 직선 km
+  const walk = straight < 1.0;                    // 1km 미만 = 도보권
+  const min = walk
+    ? Math.max(2, Math.round(straight/4.5*60))    // 도보 4.5km/h
+    : Math.max(3, Math.round(straight*1.3/65*60/5)*5); // 차 65km/h, 굽이 1.3배, 5분 단위
+  return {walk, min, icon: walk?'🚶':'🚗'};
+}
+function fmtMin(m){
+  if(m<60) return `${m}분`;
+  const h=Math.floor(m/60), mm=m%60;
+  return mm ? `${h}시간 ${mm}분` : `${h}시간`;
+}
+function parseT(t){
+  const m=String(t).trim().match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if(!m) return null;
+  let h=(+m[1])%12; if(/pm/i.test(m[3])) h+=12;
+  return h*60 + (+m[2]);
+}
+function fmtT(mins){
+  mins=((Math.round(mins)%1440)+1440)%1440;
+  const h=Math.floor(mins/60), mm=mins%60, ap=h>=12?'PM':'AM', h12=h%12||12;
+  return `${h12}:${String(mm).padStart(2,'0')} ${ap}`;
+}
+// 도착 – 출발 (체류) 표시. 출발 = 다음 도착 − 이동시간
+function setRange(el, arr, nextArr, drive){
+  if(el==null||arr==null||nextArr==null) return;
+  let dep=nextArr-drive; if(dep<arr) dep=arr;
+  const stay=dep-arr;
+  el.innerHTML = `${fmtT(arr)} – ${fmtT(dep)}` + (stay>=3?` <span class="stay">(${fmtMin(stay)})</span>`:'');
+}
+function badge(pos,html){
+  return L.marker(pos,{interactive:false,zIndexOffset:500,
+    icon:L.divIcon({className:'',iconSize:[0,0],html:`<div class="leg-badge">${html}</div>`})});
+}
+// 구간 그리기: 즉시 직선(추정)으로 그린 뒤, 자동차 구간은 OSRM 실도로로 교체
+async function drawLeg(a,b,color,g,legEl,idx,gen,prefix,fixedMin,timeEl,arrMin,nextArrMin){
+  prefix = prefix || '';
+  const straight=L.polyline([[a.lat,a.lng],[b.lat,b.lng]],
+    g.walk ? {color:'#292524',weight:3,opacity:.85,dashArray:'2,8',lineCap:'round'}
+           : {color,weight:4,opacity:.7});
+  straight.addTo(routeLayer);
+  if(g.walk) return;                          // 도보는 실도로 라우팅 안 함
+
+  const key=`${a.lng},${a.lat};${b.lng},${b.lat}`;
+  try{
+    let rt=legCache[key];
+    if(!rt){
+      await new Promise(r=>setTimeout(r,idx*250));   // 공개서버 배려용 약간의 간격
+      if(gen!==renderGen) return;
+      const url=`https://router.project-osrm.org/route/v1/driving/${key}?overview=full&geometries=geojson`;
+      const res=await fetch(url); if(!res.ok) throw 0;
+      const j=await res.json(); rt=j.routes&&j.routes[0]; if(!rt) throw 0;
+      legCache[key]=rt;
+    }
+    if(gen!==renderGen) return;               // 그새 탭이 바뀜 → 폐기
+    const line=rt.geometry.coordinates.map(c=>[c[1],c[0]]);
+    const m=Math.max(1, rt.duration/60);
+    const disp=fixedMin||(m<15?Math.round(m):Math.round(m/5)*5);
+    routeLayer.removeLayer(straight);
+    L.polyline(line,{color,weight:4,opacity:.85}).addTo(routeLayer);
+    if(legEl) legEl.textContent=`${prefix}🚗 ${fmtMin(disp)}`;
+    if(timeEl) setRange(timeEl, arrMin, nextArrMin, disp);   // 실도로 시간으로 도착–출발 갱신
+  }catch(e){ /* 실패 시 직선 추정 유지 */ }
+}
+// 길찾기: 좌표가 정확한 스톱은 좌표로 직행(정밀). dest(주소/상호)가 있으면 그걸로 — 추정 좌표 보정용
+function gmaps(s){
+  const d = s.dest ? encodeURIComponent(s.dest) : `${s.lat},${s.lng}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${d}`;
+}
+function ginfo(s){
+  const q = s.dest ? encodeURIComponent(s.dest) : encodeURIComponent(s.n.replace(/\s*\([^)]*\)/g,'').trim());
+  return `https://www.google.com/maps/search/${q}/@${s.lat},${s.lng},16z`;
+}
+
+function render(i,keepView){
+  cur = i;
+  const gen = ++renderGen;
+  document.querySelectorAll('.tab').forEach((b,j)=>b.classList.toggle('on', j===i));
+  markers.forEach(m=>map.removeLayer(m)); markers=[];
+  routeLayer.clearLayers();
+  const day = DAYS[i], color = DAY_COLORS[i];
+  document.documentElement.style.setProperty('--day', color);  // 그날 테마색
+  const sheet = document.getElementById('sheetbody');
+  sheet.innerHTML = '';
+  const bounds = [];
+  const home = HOME;
+  // 매일 0번 = 숙소(출발). 도착일(7/10)은 공항에서 오므로 0번 없음
+  const hasHome = i!==0 && day.depart;
+  const list = hasHome
+    ? [{t:day.depart, n:"숙소 (출발)", m:day.prep, lat:home.lat, lng:home.lng, dest:home.dest, isHome:true}].concat(day.stops)
+    : day.stops.slice();
+  list.forEach((s,idx)=>{
+    const num = hasHome ? idx : idx+1;      // 숙소=0, 방문지=1..N
+    const label = s.isHome ? '🏠' : num;    // 숙소는 집 이모지로 표시
+    const mk = L.marker([s.lat,s.lng],{icon:pinIcon(color,label), zIndexOffset:s.isHome?800:0}).addTo(map);
+    mk.bindPopup(`<div class="popup-time">${s.t}</div><div class="popup-name">${s.n}</div>
+      <div class="popup-note">${s.m}</div>
+      <a class="popup-go" href="${gmaps(s)}" target="_blank">🚗 길찾기</a><a class="popup-go popup-info" href="${ginfo(s)}" target="_blank">ℹ️ 구글 정보보기</a>`);
+    markers.push(mk); bounds.push([s.lat,s.lng]);
+    const row = document.createElement('div');
+    row.className = 'stop' + (s.isHome?' home-row':'');
+    row.innerHTML = `<div class="stop-num" style="background:${color}">${label}</div>
+      <div class="stop-body"><div class="stop-time">${s.t}</div>
+      <div class="stop-name">${s.n}</div><div class="stop-note">${s.m}</div></div>`;
+    row.onclick = ()=>{ map.setView([s.lat,s.lng],13,{animate:true}); mk.openPopup(); };
+    sheet.appendChild(row);
+    const timeEl = row.querySelector('.stop-time');
+    const next = list[idx+1];
+    if(s.isHome) timeEl.innerHTML = `${s.t} <span class="stay">출발</span>`;
+    else if(!next) timeEl.textContent = s.t;   // 마지막 지점: 도착만
+    if(next){
+      const g = legInfo(s,next);
+      const fixed = (s.isHome && next.fromHome) ? next.fromHome : undefined;
+      if(fixed) g.min = fixed;
+      if(!s.isHome) setRange(timeEl, parseT(s.t), parseT(next.t), g.min);   // 도착–출발(체류)
+      const leg = document.createElement('div');
+      leg.className='leg';
+      leg.textContent = `${g.icon} 약 ${fmtMin(g.min)}`;
+      sheet.appendChild(leg);
+      if(routeOn) drawLeg(s,next,color,g,leg,idx,gen,'',fixed, (s.isHome?null:timeEl), parseT(s.t), parseT(next.t));
+    }
+  });
+  if(!keepView) map.fitBounds(bounds,{padding:[36,36],maxZoom:12});
+}
+
+const tabs = document.getElementById('tabs');
+DAYS.forEach((day,i)=>{
+  const b = document.createElement('button');
+  b.className='tab';
+  b.innerHTML = `${day.label} ${day.dow}<small>${day.name}</small>`;
+  b.onclick = ()=>render(i);
+  tabs.appendChild(b);
+});
+render(cur);
+document.querySelectorAll('.tab')[cur].scrollIntoView({inline:'center'});
+locate(false,false);   // 로딩 시 내 위치 표시(뷰는 그대로), 실패해도 조용히
+
+// 다크모드 토글 (우상단)
+(function(){
+  const btn=document.getElementById('theme'), root=document.documentElement;
+  const sync=()=>btn.textContent = root.dataset.theme==='dark'?'☀️':'🌙';
+  sync();
+  btn.addEventListener('click',()=>{
+    root.dataset.theme = root.dataset.theme==='dark'?'light':'dark';
+    try{localStorage.setItem('theme',root.dataset.theme)}catch(e){}
+    sync();
+  });
+})();
+
+// 하단 시트: 핸들 드래그로 펼치기(스냅 3단계)
+(function(){
+  const sheet=document.getElementById('sheet');
+  const grab=document.getElementById('grab');
+  const SNAPS=[0.16,0.46,0.84];
+  let snapIdx=1;
+  const H=()=>window.innerHeight;
+  function setH(px,anim){ sheet.style.transition=anim?'height .25s cubic-bezier(.4,0,.2,1)':'none'; sheet.style.height=px+'px'; }
+  function snapTo(k){ snapIdx=Math.max(0,Math.min(SNAPS.length-1,k)); setH(SNAPS[snapIdx]*H(),true); setTimeout(()=>map.invalidateSize(),260); }
+  snapTo(1);
+  window.addEventListener('resize',()=>setH(SNAPS[snapIdx]*H(),false));
+  let gY=null,gH=0,moved=0;
+  grab.addEventListener('touchstart',e=>{ gY=e.touches[0].clientY; gH=sheet.offsetHeight; moved=0; sheet.style.transition='none'; },{passive:true});
+  grab.addEventListener('touchmove',e=>{
+    if(gY===null) return;
+    const dy=gY-e.touches[0].clientY; moved=Math.max(moved,Math.abs(dy));
+    const h=Math.max(SNAPS[0]*H()-30, Math.min(SNAPS[SNAPS.length-1]*H()+30, gH+dy));
+    sheet.style.height=h+'px';
+    if(e.cancelable) e.preventDefault();
+  },{passive:false});
+  grab.addEventListener('touchend',()=>{
+    if(gY===null) return;
+    if(moved<8){ snapTo((snapIdx+1)%SNAPS.length); gY=null; return; }   // 탭 = 다음 단계
+    const cur=sheet.offsetHeight/H(); let best=0,bd=9;
+    SNAPS.forEach((v,k)=>{ const d=Math.abs(v-cur); if(d<bd){bd=d;best=k;} });
+    snapTo(best); gY=null;
+  });
+})();
+</script>
+</body>
+</html>
